@@ -131,8 +131,14 @@ _mesa_print_ir_glsl(exec_list *instructions,
 			ralloc_strcat (&buffer, "#extension GL_ARB_shader_texture_lod : enable\n");
 	}
    if (state) {
+	   ir_struct_usage_visitor v;
+	   v.run (instructions);
+
       for (unsigned i = 0; i < state->num_user_structures; i++) {
 	 const glsl_type *const s = state->user_structures[i];
+
+	 if (!v.has_struct_entry(s))
+		 continue;
 
 	 ralloc_asprintf_append (&buffer, "struct %s {\n",
 		s->name);
