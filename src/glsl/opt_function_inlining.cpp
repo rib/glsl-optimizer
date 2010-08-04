@@ -45,6 +45,7 @@ public:
    ir_function_inlining_visitor()
    {
       progress = false;
+	  current_function = NULL;
    }
 
    virtual ~ir_function_inlining_visitor()
@@ -59,7 +60,20 @@ public:
    virtual ir_visitor_status visit_enter(ir_texture *);
    virtual ir_visitor_status visit_enter(ir_swizzle *);
 
+   virtual ir_visitor_status visit_enter(ir_function_signature *sig)
+   {
+	   this->current_function = sig;
+	   return ir_hierarchical_visitor::visit_enter(sig);
+   }
+   virtual ir_visitor_status visit_leave(ir_function_signature *sig)
+   {
+	   this->current_function = NULL;
+	   return ir_hierarchical_visitor::visit_leave(sig);
+   }
+
+   ir_function_signature* current_function;
    bool progress;
+
 };
 
 
@@ -107,8 +121,45 @@ replace_return_with_assignment(ir_instruction *ir, void *data)
    }
 }
 
+static void rename_inlined_variable (ir_instruction* new_ir, ir_function_signature* func)
+{
+	ir_variable *new_var = new_ir->as_variable();
+	if (!new_var)
+		return;
+
+	// go through callee, see if we have any variables that match this one
+	bool progress;
+	int counter = 0;
+	do
+	{
+		progress = false;
+		foreach_iter(exec_list_iterator, iter, func->parameters)
+		{
+			const ir_variable* var = (const ir_variable*) iter.get();
+			if (!strcmp(var->name, new_var->name))
+			{
+				progress = true;
+				ralloc_asprintf_append((char**)&new_var->name, "_i%d", counter++);
+			}
+		}
+		foreach_iter(exec_list_iterator, iter, func->body)
+		{
+			ir_instruction *ir = (ir_instruction*)iter.get();
+			const ir_variable *var = ir->as_variable();
+			if (!var)
+				continue;
+			if (!strcmp(var->name, new_var->name))
+			{
+				progress = true;
+				ralloc_asprintf_append((char**)&new_var->name, "_i%d", counter++);
+			}
+		}
+	}
+	while (progress);
+}
+
 ir_rvalue *
-ir_call::generate_inline(ir_instruction *next_ir)
+ir_call::generate_inline(ir_instruction *next_ir, ir_function_signature* parent)
 {
    void *ctx = ralloc_parent(this);
    ir_variable **parameters;
@@ -153,6 +204,7 @@ ir_call::generate_inline(ir_instruction *next_ir)
 	 parameters[i] = NULL;
       } else {
 	 parameters[i] = sig_param->clone(ctx, ht);
+	 rename_inlined_variable (parameters[i], parent);
 	 parameters[i]->mode = ir_var_auto;
 
      parameters[i]->precision = (glsl_precision)parameters[i]->precision;
@@ -190,6 +242,7 @@ ir_call::generate_inline(ir_instruction *next_ir)
    foreach_iter(exec_list_iterator, iter, callee->body) {
       ir_instruction *ir = (ir_instruction *)iter.get();
       ir_instruction *new_ir = ir->clone(ctx, ht);
+	  rename_inlined_variable (new_ir, parent);
 
       new_instructions.push_tail(new_ir);
       visit_tree(new_ir, replace_return_with_assignment, retval);
@@ -295,7 +348,7 @@ ir_function_inlining_visitor::visit_enter(ir_call *ir)
        */
       assert(ir == base_ir);
 
-      (void) ir->generate_inline(ir);
+      (void) ir->generate_inline(ir, this->current_function);
       ir->remove();
       this->progress = true;
    }
@@ -314,7 +367,7 @@ ir_function_inlining_visitor::visit_enter(ir_assignment *ir)
    /* generates the parameter setup, function body, and returns the return
     * value of the function
     */
-   ir_rvalue *rhs = call->generate_inline(ir);
+   ir_rvalue *rhs = call->generate_inline(ir, this->current_function);
    assert(rhs);
 
 	// if function's return type had no precision specified, assign
