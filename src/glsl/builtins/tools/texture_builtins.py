@@ -378,6 +378,10 @@ def generate_texture_functions(fs):
     generate_fiu_sigs("txd", "2D")
     end_function(fs, "texture2DGradARB")
 
+    start_function("texture2DGradEXT")
+    generate_fiu_sigs("txd", "2D")
+    end_function(fs, "texture2DGradEXT")
+
     start_function("texture3DGradARB")
     generate_fiu_sigs("txd", "3D")
     end_function(fs, "texture3DGradARB")
@@ -385,6 +389,10 @@ def generate_texture_functions(fs):
     start_function("textureCubeGradARB")
     generate_fiu_sigs("txd", "Cube")
     end_function(fs, "textureCubeGradARB")
+
+    start_function("textureCubeGradEXT")
+    generate_fiu_sigs("txd", "Cube")
+    end_function(fs, "textureCubeGradEXT")
 
     start_function("texture1DProjGradARB")
     generate_fiu_sigs("txd", "1D", True)
@@ -395,6 +403,11 @@ def generate_texture_functions(fs):
     generate_fiu_sigs("txd", "2D", True)
     generate_fiu_sigs("txd", "2D", True, 1)
     end_function(fs, "texture2DProjGradARB")
+
+    start_function("texture2DProjGradEXT")
+    generate_fiu_sigs("txd", "2D", True)
+    generate_fiu_sigs("txd", "2D", True, 1)
+    end_function(fs, "texture2DProjGradEXT")
 
     start_function("texture3DProjGradARB")
     generate_fiu_sigs("txd", "3D", True)
@@ -464,6 +477,10 @@ def generate_texture_functions(fs):
     generate_sigs("", "txl", "2D")
     end_function(fs, "texture2DLod")
 
+    start_function("texture2DLodEXT")
+    generate_sigs("", "txl", "2D")
+    end_function(fs, "texture2DLodEXT")
+
     start_function("texture2DProj")
     generate_sigs("", "tex", "2D", Proj)
     generate_sigs("", "tex", "2D", Proj, 1)
@@ -475,6 +492,11 @@ def generate_texture_functions(fs):
     generate_sigs("", "txl", "2D", Proj)
     generate_sigs("", "txl", "2D", Proj, 1)
     end_function(fs, "texture2DProjLod")
+
+    start_function("texture2DProjLodEXT")
+    generate_sigs("", "txl", "2D", Proj)
+    generate_sigs("", "txl", "2D", Proj, 1)
+    end_function(fs, "texture2DProjLodEXT")
 
     start_function("texture3D")
     generate_sigs("", "tex", "3D")
@@ -502,6 +524,10 @@ def generate_texture_functions(fs):
     start_function("textureCubeLod")
     generate_sigs("", "txl", "Cube")
     end_function(fs, "textureCubeLod")
+    
+    start_function("textureCubeLodEXT")
+    generate_sigs("", "txl", "Cube")
+    end_function(fs, "textureCubeLodEXT")
 
     start_function("shadow1D")
     generate_sigs("", "tex", "1DShadow", False, 1)
