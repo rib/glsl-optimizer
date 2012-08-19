@@ -254,7 +254,7 @@ ir_mat_op_to_vec_visitor::do_equal_mat_mat(ir_dereference *result,
 
    ir_variable *const tmp_bvec =
       new(this->mem_ctx) ir_variable(bvec_type, "mat_cmp_bvec",
-				     ir_var_temporary);
+				     ir_var_temporary, glsl_precision_low);
    this->base_ir->insert_before(tmp_bvec);
 
    for (unsigned i = 0; i < columns; i++) {
@@ -337,7 +337,7 @@ ir_mat_op_to_vec_visitor::visit_leave(ir_assignment *orig_assign)
        */
       ir_variable *var = new(mem_ctx) ir_variable(orig_expr->operands[i]->type,
 						  "mat_op_to_vec",
-						  ir_var_temporary);
+						  ir_var_temporary, precision_from_ir(orig_expr->operands[i]));
       base_ir->insert_before(var);
 
       /* Note that we use this dereference for the assignment.  That means

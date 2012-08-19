@@ -726,6 +726,18 @@ do_assignment(exec_list *instructions, struct _mesa_glsl_parse_state *state,
       mark_whole_array_access(lhs);
    }
 
+   if (lhs->get_precision() == glsl_precision_undefined)
+   {
+	   glsl_precision prec = precision_from_ir (rhs);
+	   ir_dereference *const d = lhs->as_dereference();
+	   if (d)
+	   {
+		   ir_variable *const var = d->variable_referenced();
+		   if (var)
+			   var->precision = prec;
+	   }
+   }
+
    /* Most callers of do_assignment (assign, add_assign, pre_inc/dec,
     * but not post_inc) need the converted assigned value as an rvalue
     * to handle things like:
@@ -737,7 +749,7 @@ do_assignment(exec_list *instructions, struct _mesa_glsl_parse_state *state,
     * ends up not being used, the temp will get copy-propagated out.
     */
    ir_variable *var = new(ctx) ir_variable(rhs->type, "assignment_tmp",
-					   ir_var_temporary);
+					   ir_var_temporary, precision_from_ir(rhs));
    ir_dereference_variable *deref_var = new(ctx) ir_dereference_variable(var);
    instructions->push_tail(var);
    instructions->push_tail(new(ctx) ir_assignment(deref_var,
@@ -758,7 +770,7 @@ get_lvalue_copy(exec_list *instructions, ir_rvalue *lvalue)
    ir_variable *var;
 
    var = new(ctx) ir_variable(lvalue->type, "_post_incdec_tmp",
-			      ir_var_temporary);
+			      ir_var_temporary, precision_from_ir(lvalue));
    instructions->push_tail(var);
    var->mode = ir_var_auto;
 
@@ -1100,6 +1112,7 @@ ast_expression::hir(exec_list *instructions,
    case ast_bit_or:
       op[0] = this->subexpressions[0]->hir(instructions, state);
       op[1] = this->subexpressions[1]->hir(instructions, state);
+
       type = bit_logic_result_type(op[0]->type, op[1]->type, this->oper,
                                    state, &loc);
       result = new(ctx) ir_expression(operations[this->oper], type,
@@ -1143,7 +1156,7 @@ ast_expression::hir(exec_list *instructions,
       } else {
 	 ir_variable *const tmp = new(ctx) ir_variable(glsl_type::bool_type,
 						       "and_tmp",
-						       ir_var_temporary);
+						       ir_var_temporary, glsl_precision_low);
 	 instructions->push_tail(tmp);
 
 	 ir_if *const stmt = new(ctx) ir_if(op[0]);
@@ -1184,7 +1197,7 @@ ast_expression::hir(exec_list *instructions,
       } else {
 	 ir_variable *const tmp = new(ctx) ir_variable(glsl_type::bool_type,
 						       "or_tmp",
-						       ir_var_temporary);
+						       ir_var_temporary, glsl_precision_low);
 	 instructions->push_tail(tmp);
 
 	 ir_if *const stmt = new(ctx) ir_if(op[0]);
@@ -1372,7 +1385,7 @@ ast_expression::hir(exec_list *instructions,
 	 result = (cond_val->value.b[0]) ? then_val : else_val;
       } else {
 	 ir_variable *const tmp =
-	    new(ctx) ir_variable(type, "conditional_tmp", ir_var_temporary);
+	    new(ctx) ir_variable(type, "conditional_tmp", ir_var_temporary, higher_precision(op[1], op[2]));
 	 instructions->push_tail(tmp);
 
 	 ir_if *const stmt = new(ctx) ir_if(op[0]);
@@ -2331,6 +2344,20 @@ process_initializer(ir_variable *var, ast_declaration *decl,
    return result;
 }
 
+static void
+apply_precision_to_variable(const struct ast_type_specifier *spec,
+				 ir_variable *var,
+				 struct _mesa_glsl_parse_state *state)
+{
+	if (!state->es_shader)
+		return;
+	if (var->type->is_sampler() && spec->precision == ast_precision_none)
+		var->precision = ast_precision_low; // samplers default to low precision
+	else
+		var->precision = spec->precision;
+}
+
+
 ir_rvalue *
 ast_declarator_list::hir(exec_list *instructions,
 			 struct _mesa_glsl_parse_state *state)
@@ -2446,7 +2473,7 @@ ast_declarator_list::hir(exec_list *instructions,
 	 var_type = decl_type;
       }
 
-      var = new(ctx) ir_variable(var_type, decl->identifier, ir_var_auto);
+      var = new(ctx) ir_variable(var_type, decl->identifier, ir_var_auto, (glsl_precision)this->type->specifier->precision);
 
       /* From page 22 (page 28 of the PDF) of the GLSL 1.10 specification;
        *
@@ -2479,6 +2506,7 @@ ast_declarator_list::hir(exec_list *instructions,
 
       apply_type_qualifier_to_variable(& this->type->qualifier, var, state,
 				       & loc);
+	  apply_precision_to_variable(this->type->specifier, var, state);
 
       if (this->type->qualifier.flags.q.invariant) {
 	 if ((state->target == vertex_shader) && !(var->mode == ir_var_out ||
@@ -2878,12 +2906,13 @@ ast_parameter_declarator::hir(exec_list *instructions,
    }
 
    is_void = false;
-   ir_variable *var = new(ctx) ir_variable(type, this->identifier, ir_var_in);
+   ir_variable *var = new(ctx) ir_variable(type, this->identifier, ir_var_in, (glsl_precision)this->type->specifier->precision);
 
    /* Apply any specified qualifiers to the parameter declaration.  Note that
     * for function parameters the default mode is 'in'.
     */
    apply_type_qualifier_to_variable(& this->type->qualifier, var, state, & loc);
+   apply_precision_to_variable(this->type->specifier, var, state);
 
    /* From page 17 (page 23 of the PDF) of the GLSL 1.20 spec:
     *
@@ -3091,7 +3120,7 @@ ast_function::hir(exec_list *instructions,
    /* Finish storing the information about this new function in its signature.
     */
    if (sig == NULL) {
-      sig = new(ctx) ir_function_signature(return_type);
+      sig = new(ctx) ir_function_signature(return_type, (glsl_precision)this->return_type->specifier->precision);
       f->add_signature(sig);
    }
 
@@ -3526,6 +3555,7 @@ ast_struct_specifier::hir(exec_list *instructions,
 	 fields[i].type = (field_type != NULL)
 	    ? field_type : glsl_type::error_type;
 	 fields[i].name = decl->identifier;
+	 fields[i].precision = (glsl_precision)decl_list->type->specifier->precision;
 	 i++;
       }
    }

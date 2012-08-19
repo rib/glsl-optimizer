@@ -224,7 +224,7 @@ void
 lower_instructions_visitor::mod_to_fract(ir_expression *ir)
 {
    ir_variable *temp = new(ir) ir_variable(ir->operands[1]->type, "mod_b",
-					   ir_var_temporary);
+					   ir_var_temporary, precision_from_ir(ir->operands[1]));
    this->base_ir->insert_before(temp);
 
    ir_assignment *const assign =

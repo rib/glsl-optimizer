@@ -67,6 +67,7 @@ public:
    }
 
    virtual ir_visitor_status visit_leave(class ir_assignment *);
+   virtual ir_visitor_status visit_enter(class ir_assignment *);
    virtual ir_visitor_status visit_enter(class ir_call *);
    virtual ir_visitor_status visit_enter(class ir_expression *);
    virtual ir_visitor_status visit_enter(class ir_function *);
@@ -122,6 +123,11 @@ ir_tree_grafting_visitor::do_graft(ir_rvalue **rvalue)
    if (!deref || deref->var != this->graft_var)
       return false;
 
+   glsl_precision rvl_prec = deref->get_precision();
+   glsl_precision rhs_prec = this->graft_assign->rhs->get_precision();
+   if (rvl_prec != rhs_prec && rvl_prec != glsl_precision_undefined && rhs_prec != glsl_precision_undefined)
+	   return false;
+
    if (debug) {
       printf("GRAFTING:\n");
       this->graft_assign->print();
@@ -170,6 +176,16 @@ ir_tree_grafting_visitor::visit_leave(ir_assignment *ir)
 
    return visit_continue;
 }
+
+ir_visitor_status
+ir_tree_grafting_visitor::visit_enter(ir_assignment *ir)
+{
+	// if we're entering into assignment of different precision, leave now
+	if (ir->lhs->get_precision() != this->graft_var->precision && ir->lhs->get_precision() != glsl_precision_undefined && this->graft_var->precision != glsl_precision_undefined)
+		return visit_continue_with_parent;
+	return visit_continue;
+}
+
 
 ir_visitor_status
 ir_tree_grafting_visitor::visit_enter(ir_function *ir)
@@ -336,6 +352,11 @@ tree_grafting_basic_block(ir_instruction *bb_first,
       if (!entry->declaration ||
 	  entry->assigned_count != 1 ||
 	  entry->referenced_count != 2)
+	 continue;
+
+	  glsl_precision var_prec = (glsl_precision)lhs_var->precision;
+	  glsl_precision rhs_prec = assign->rhs->get_precision();
+	  if (var_prec != rhs_prec && var_prec != glsl_precision_undefined && rhs_prec != glsl_precision_undefined)
 	 continue;
 
       assert(assign == entry->assign);

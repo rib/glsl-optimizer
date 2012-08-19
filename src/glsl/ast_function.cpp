@@ -93,6 +93,31 @@ prototype_string(const glsl_type *return_type, const char *name,
    return str;
 }
 
+static glsl_precision precision_from_call (const ir_function_signature* sig, glsl_precision max_prec, glsl_precision first_prec)
+{
+	if (sig->precision != glsl_precision_undefined)
+		return sig->precision;
+
+	// if return type is boolean, treat as lowp
+	if (sig->return_type->base_type == GLSL_TYPE_BOOL)
+		return glsl_precision_low;
+
+	// if it's a built-in texture function, precision comes from sampler (1st param) precision
+	if (sig->is_builtin)
+	{
+		if (strncmp (sig->function_name(), "texture", 7) == 0)
+			return first_prec;
+
+	}
+	
+	// other built-in: max precision of parameters
+	if (sig->is_builtin)
+		return max_prec;
+
+	// otherwise: undefined
+	return glsl_precision_undefined;
+}
+
 
 static ir_rvalue *
 match_function_by_name(exec_list *instructions, const char *name,
@@ -134,6 +159,9 @@ match_function_by_name(exec_list *instructions, const char *name,
       }
    }
 
+   glsl_precision prec_params_max = glsl_precision_undefined;
+   glsl_precision prec_params_first = glsl_precision_undefined;
+   int params_counter = 0;
    exec_list post_call_conversions;
 
    if (sig != NULL) {
@@ -160,6 +188,13 @@ match_function_by_name(exec_list *instructions, const char *name,
 	 assert(actual != NULL);
 	 assert(formal != NULL);
 
+	 glsl_precision param_prec = (glsl_precision)formal->precision;
+	 if (param_prec == glsl_precision_undefined)
+		 param_prec = actual->get_precision();
+	 prec_params_max = higher_precision (prec_params_max, param_prec);
+	 if (params_counter == 0)
+		 prec_params_first = param_prec;
+		  
 	 if (formal->mode == ir_var_const_in && !actual->as_constant()) {
 	    _mesa_glsl_error(loc, state,
 			     "parameter `%s' must be a constant expression",
@@ -224,7 +259,7 @@ match_function_by_name(exec_list *instructions, const char *name,
                   ir_variable *tmp =
                      new(ctx) ir_variable(formal->type,
                                           "out_parameter_conversion",
-                                          ir_var_temporary);
+                                          ir_var_temporary, (glsl_precision)formal->precision);
                   instructions->push_tail(tmp);
                   ir_dereference_variable *deref_tmp_1
                      = new(ctx) ir_dereference_variable(tmp);
@@ -254,7 +289,10 @@ match_function_by_name(exec_list *instructions, const char *name,
 
 	 actual_iter.next();
 	 formal_iter.next();
+	 ++params_counter;
       }
+	   
+      glsl_precision call_prec = precision_from_call(sig, prec_params_max, prec_params_first);
 
       /* Always insert the call in the instruction stream, and return a deref
        * of its return val if it returns a value, since we don't know if
@@ -280,12 +318,13 @@ match_function_by_name(exec_list *instructions, const char *name,
          }
 
 	 ir_variable *var;
-
+		  
 	 var = new(ctx) ir_variable(sig->return_type,
 				    ralloc_asprintf(ctx, "%s_retval",
 						    sig->function_name()),
-				    ir_var_temporary);
+				    ir_var_temporary, call_prec);
 	 instructions->push_tail(var);
+     call->set_precision (call_prec);
 
 	 deref = new(ctx) ir_dereference_variable(var);
 	 ir_assignment *assign = new(ctx) ir_assignment(deref, call, NULL);
@@ -562,7 +601,7 @@ process_array_constructor(exec_list *instructions,
       return new(ctx) ir_constant(constructor_type, &actual_parameters);
 
    ir_variable *var = new(ctx) ir_variable(constructor_type, "array_ctor",
-					   ir_var_temporary);
+					   ir_var_temporary, glsl_precision_undefined); ///@TODO
    instructions->push_tail(var);
 
    int i = 0;
@@ -624,14 +663,14 @@ single_scalar_parameter(exec_list *parameters)
  * body.
  */
 ir_rvalue *
-emit_inline_vector_constructor(const glsl_type *type,
+emit_inline_vector_constructor(const glsl_type *type, unsigned ast_precision,
 			       exec_list *instructions,
 			       exec_list *parameters,
 			       void *ctx)
 {
    assert(!parameters->is_empty());
 
-   ir_variable *var = new(ctx) ir_variable(type, "vec_ctor", ir_var_temporary);
+   ir_variable *var = new(ctx) ir_variable(type, "vec_ctor", ir_var_temporary, (glsl_precision)ast_precision);
    instructions->push_tail(var);
 
    /* There are two kinds of vector constructors.
@@ -648,6 +687,7 @@ emit_inline_vector_constructor(const glsl_type *type,
       ir_rvalue *first_param = (ir_rvalue *)parameters->head;
       ir_rvalue *rhs = new(ctx) ir_swizzle(first_param, 0, 0, 0, 0,
 					   lhs_components);
+	  var->precision = higher_precision ((glsl_precision)var->precision, rhs->get_precision());
       ir_dereference_variable *lhs = new(ctx) ir_dereference_variable(var);
       const unsigned mask = (1U << lhs_components) - 1;
 
@@ -665,6 +705,7 @@ emit_inline_vector_constructor(const glsl_type *type,
 
       foreach_list(node, parameters) {
 	 ir_rvalue *param = (ir_rvalue *) node;
+	 var->precision = higher_precision ((glsl_precision)var->precision, param->get_precision());
 	 unsigned rhs_components = param->type->components();
 
 	 /* Do not try to assign more components to the vector than it has!
@@ -813,14 +854,14 @@ assign_to_matrix_column(ir_variable *var, unsigned column, unsigned row_base,
  * body.
  */
 ir_rvalue *
-emit_inline_matrix_constructor(const glsl_type *type,
+emit_inline_matrix_constructor(const glsl_type *type, unsigned ast_precision,
 			       exec_list *instructions,
 			       exec_list *parameters,
 			       void *ctx)
 {
    assert(!parameters->is_empty());
 
-   ir_variable *var = new(ctx) ir_variable(type, "mat_ctor", ir_var_temporary);
+   ir_variable *var = new(ctx) ir_variable(type, "mat_ctor", ir_var_temporary, (glsl_precision)ast_precision);
    instructions->push_tail(var);
 
    /* There are three kinds of matrix constructors.
@@ -844,7 +885,7 @@ emit_inline_matrix_constructor(const glsl_type *type,
        */
       ir_variable *rhs_var =
 	 new(ctx) ir_variable(glsl_type::vec4_type, "mat_ctor_vec",
-			      ir_var_temporary);
+			      ir_var_temporary, (glsl_precision)ast_precision);
       instructions->push_tail(rhs_var);
 
       ir_constant_data zero;
@@ -957,7 +998,7 @@ emit_inline_matrix_constructor(const glsl_type *type,
        */
       ir_variable *const rhs_var =
 	 new(ctx) ir_variable(first_param->type, "mat_ctor_mat",
-			      ir_var_temporary);
+			      ir_var_temporary, (glsl_precision)ast_precision);
       instructions->push_tail(rhs_var);
 
       ir_dereference *const rhs_var_ref =
@@ -1018,7 +1059,7 @@ emit_inline_matrix_constructor(const glsl_type *type,
 	  * generate a temporary and copy the paramter there.
 	  */
 	 ir_variable *rhs_var =
-	    new(ctx) ir_variable(rhs->type, "mat_ctor_vec", ir_var_temporary);
+	    new(ctx) ir_variable(rhs->type, "mat_ctor_vec", ir_var_temporary, (glsl_precision)ast_precision);
 	 instructions->push_tail(rhs_var);
 
 	 ir_dereference *rhs_var_ref =
@@ -1085,7 +1126,7 @@ emit_inline_record_constructor(const glsl_type *type,
 			       void *mem_ctx)
 {
    ir_variable *const var =
-      new(mem_ctx) ir_variable(type, "record_ctor", ir_var_temporary);
+      new(mem_ctx) ir_variable(type, "record_ctor", ir_var_temporary, glsl_precision_undefined);
    ir_dereference_variable *const d = new(mem_ctx) ir_dereference_variable(var);
 
    instructions->push_tail(var);
@@ -1326,7 +1367,7 @@ ast_function_expression::hir(exec_list *instructions,
 
 	    /* Create a temporary containing the matrix. */
 	    ir_variable *var = new(ctx) ir_variable(matrix->type, "matrix_tmp",
-						    ir_var_temporary);
+						    ir_var_temporary, matrix->get_precision());
 	    instructions->push_tail(var);
 	    instructions->push_tail(new(ctx) ir_assignment(new(ctx)
 	       ir_dereference_variable(var), matrix, NULL));
@@ -1378,13 +1419,13 @@ ast_function_expression::hir(exec_list *instructions,
 	 return dereference_component((ir_rvalue *) actual_parameters.head,
 				      0);
       } else if (constructor_type->is_vector()) {
-	 return emit_inline_vector_constructor(constructor_type,
+	 return emit_inline_vector_constructor(constructor_type, type->precision,
 					       instructions,
 					       &actual_parameters,
 					       ctx);
       } else {
 	 assert(constructor_type->is_matrix());
-	 return emit_inline_matrix_constructor(constructor_type,
+	 return emit_inline_matrix_constructor(constructor_type, type->precision,
 					       instructions,
 					       &actual_parameters,
 					       ctx);

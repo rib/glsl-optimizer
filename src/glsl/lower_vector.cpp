@@ -134,7 +134,7 @@ lower_vector_visitor::handle_rvalue(ir_rvalue **rvalue)
    /* Generate a temporary with the same type as the ir_quadop_operation.
     */
    ir_variable *const temp =
-      new(mem_ctx) ir_variable(expr->type, "vecop_tmp", ir_var_temporary);
+      new(mem_ctx) ir_variable(expr->type, "vecop_tmp", ir_var_temporary, precision_from_ir(expr));
 
    this->base_ir->insert_before(temp);
 

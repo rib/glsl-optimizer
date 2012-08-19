@@ -40,7 +40,7 @@ ir_variable *
 ir_variable::clone(void *mem_ctx, struct hash_table *ht) const
 {
    ir_variable *var = new(mem_ctx) ir_variable(this->type, this->name,
-					       (ir_variable_mode) this->mode);
+					       (ir_variable_mode) this->mode, (glsl_precision)this->precision);
 
    var->max_array_access = this->max_array_access;
    var->read_only = this->read_only;
@@ -81,7 +81,9 @@ ir_variable::clone(void *mem_ctx, struct hash_table *ht) const
 ir_swizzle *
 ir_swizzle::clone(void *mem_ctx, struct hash_table *ht) const
 {
-   return new(mem_ctx) ir_swizzle(this->val->clone(mem_ctx, ht), this->mask);
+   ir_swizzle* rv = new(mem_ctx) ir_swizzle(this->val->clone(mem_ctx, ht), this->mask);
+   rv->set_precision (this->get_precision());
+   return rv;
 }
 
 ir_return *
@@ -167,7 +169,9 @@ ir_call::clone(void *mem_ctx, struct hash_table *ht) const
       new_parameters.push_tail(ir->clone(mem_ctx, ht));
    }
 
-   return new(mem_ctx) ir_call(this->callee, &new_parameters);
+   ir_call* rv = new(mem_ctx) ir_call(this->callee, &new_parameters);
+   rv->set_precision (this->get_precision());
+   return rv;
 }
 
 ir_expression *
@@ -180,8 +184,10 @@ ir_expression::clone(void *mem_ctx, struct hash_table *ht) const
       op[i] = this->operands[i]->clone(mem_ctx, ht);
    }
 
-   return new(mem_ctx) ir_expression(this->operation, this->type,
+   ir_expression* rv = new(mem_ctx) ir_expression(this->operation, this->type,
 				     op[0], op[1], op[2], op[3]);
+   rv->set_precision (this->get_precision());
+   return rv;
 }
 
 ir_dereference_variable *
@@ -197,7 +203,9 @@ ir_dereference_variable::clone(void *mem_ctx, struct hash_table *ht) const
       new_var = this->var;
    }
 
-   return new(mem_ctx) ir_dereference_variable(new_var);
+   ir_dereference_variable* rv = new(mem_ctx) ir_dereference_variable(new_var);
+   rv->set_precision (this->get_precision());
+   return rv;
 }
 
 ir_dereference_array *
@@ -308,7 +316,7 @@ ir_function_signature *
 ir_function_signature::clone_prototype(void *mem_ctx, struct hash_table *ht) const
 {
    ir_function_signature *copy =
-      new(mem_ctx) ir_function_signature(this->return_type);
+      new(mem_ctx) ir_function_signature(this->return_type, this->precision);
 
    copy->is_defined = false;
    copy->is_builtin = this->is_builtin;

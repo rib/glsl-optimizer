@@ -96,6 +96,7 @@ glsl_type::glsl_type(const glsl_struct_field *fields, unsigned num_fields,
       this->fields.structure[i].type = fields[i].type;
       this->fields.structure[i].name = ralloc_strdup(this->fields.structure,
 						     fields[i].name);
+	  this->fields.structure[i].precision = fields[i].precision;
    }
 }
 
@@ -411,6 +412,8 @@ glsl_type::record_key_compare(const void *a, const void *b)
    for (unsigned i = 0; i < key1->length; i++) {
       if (key1->fields.structure[i].type != key2->fields.structure[i].type)
 	 return 1;
+      if (key1->fields.structure[i].precision != key2->fields.structure[i].precision)
+	 return 1;
       if (strcmp(key1->fields.structure[i].name,
 		 key2->fields.structure[i].name) != 0)
 	 return 1;
@@ -479,6 +482,20 @@ glsl_type::field_type(const char *name) const
    }
 
    return error_type;
+}
+
+const glsl_precision
+glsl_type::field_precision(const char *name) const
+{
+   if (this->base_type != GLSL_TYPE_STRUCT)
+      return glsl_precision_undefined;
+
+   for (unsigned i = 0; i < this->length; i++) {
+      if (strcmp(name, this->fields.structure[i].name) == 0)
+	 return this->fields.structure[i].precision;
+   }
+
+   return glsl_precision_undefined;
 }
 
 

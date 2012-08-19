@@ -106,7 +106,7 @@ compare_index_block(exec_list *instructions, ir_variable *index,
    ir_variable *const condition =
       new(mem_ctx) ir_variable(condition_val->type,
 			       "dereference_condition",
-			       ir_var_temporary);
+			       ir_var_temporary, precision_from_ir(condition_val));
    instructions->push_tail(condition);
 
    ir_rvalue *const cond_deref =
@@ -407,7 +407,7 @@ public:
       if (orig_assign) {
 	 var = new(mem_ctx) ir_variable(orig_assign->rhs->type,
 					"dereference_array_value",
-					ir_var_temporary);
+					ir_var_temporary, precision_from_ir(orig_deref));
 	 base_ir->insert_before(var);
 
 	 ir_dereference *lhs = new(mem_ctx) ir_dereference_variable(var);
@@ -419,14 +419,14 @@ public:
       } else {
 	 var = new(mem_ctx) ir_variable(orig_deref->type,
 					"dereference_array_value",
-					ir_var_temporary);
+					ir_var_temporary, precision_from_ir(orig_deref));
 	 base_ir->insert_before(var);
       }
 
       /* Store the index to a temporary to avoid reusing its tree. */
       ir_variable *index =
 	 new(mem_ctx) ir_variable(orig_deref->array_index->type,
-				  "dereference_array_index", ir_var_temporary);
+				  "dereference_array_index", ir_var_temporary, precision_from_ir(orig_deref->array_index));
       base_ir->insert_before(index);
 
       ir_dereference *lhs = new(mem_ctx) ir_dereference_variable(index);

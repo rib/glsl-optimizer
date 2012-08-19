@@ -169,7 +169,6 @@ ir_if_to_cond_assign_visitor::visit_leave(ir_if *ir)
 
    bool found_control_flow = false;
    ir_assignment *assign;
-   ir_dereference_variable *deref;
 
    /* Check that both blocks don't contain anything we can't support. */
    foreach_iter(exec_list_iterator, then_iter, ir->then_instructions) {
@@ -192,7 +191,7 @@ ir_if_to_cond_assign_visitor::visit_leave(ir_if *ir)
    ir_variable *const then_var =
       new(mem_ctx) ir_variable(glsl_type::bool_type,
 			       "if_to_cond_assign_then",
-			       ir_var_temporary);
+			       ir_var_temporary, glsl_precision_low);
    ir->insert_before(then_var);
 
    ir_dereference_variable *then_cond =
@@ -219,7 +218,7 @@ ir_if_to_cond_assign_visitor::visit_leave(ir_if *ir)
       ir_variable *const else_var =
 	 new(mem_ctx) ir_variable(glsl_type::bool_type,
 				  "if_to_cond_assign_else",
-				  ir_var_temporary);
+				  ir_var_temporary, glsl_precision_low);
       ir->insert_before(else_var);
 
       ir_dereference_variable *else_cond =

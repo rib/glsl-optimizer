@@ -325,8 +325,10 @@ ir_copy_propagation_visitor::add_copy(ir_assignment *ir)
 	 ir->condition = new(ralloc_parent(ir)) ir_constant(false);
 	 this->progress = true;
       } else {
+		  if (lhs_var->precision == rhs_var->precision || lhs_var->precision==glsl_precision_undefined || rhs_var->precision==glsl_precision_undefined) {
 	 entry = new(this->mem_ctx) acp_entry(lhs_var, rhs_var);
 	 this->acp->push_tail(entry);
+		  }
       }
    }
 }

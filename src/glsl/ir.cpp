@@ -26,7 +26,20 @@
 #include "ir_visitor.h"
 #include "glsl_types.h"
 
-ir_rvalue::ir_rvalue()
+glsl_precision higher_precision (ir_instruction* a, ir_instruction* b)
+{
+	if (!a && !b)
+		return glsl_precision_undefined;
+	if (!a)
+		return precision_from_ir (b);
+	if (!b)
+		return precision_from_ir (a);
+	return higher_precision (precision_from_ir(a), precision_from_ir(b));
+}
+
+
+ir_rvalue::ir_rvalue(glsl_precision precision)
+: precision(precision)
 {
    this->type = glsl_type::error_type;
 }
@@ -193,6 +206,7 @@ ir_assignment::ir_assignment(ir_rvalue *lhs, ir_rvalue *rhs,
 
 ir_expression::ir_expression(int op, const struct glsl_type *type,
 			     ir_rvalue *op0)
+: ir_rvalue(precision_from_ir(op0))
 {
    assert(get_num_operands(ir_expression_operation(op)) == 1);
    this->ir_type = ir_type_expression;
@@ -206,6 +220,7 @@ ir_expression::ir_expression(int op, const struct glsl_type *type,
 
 ir_expression::ir_expression(int op, const struct glsl_type *type,
 			     ir_rvalue *op0, ir_rvalue *op1)
+: ir_rvalue(higher_precision(op0,op1))
 {
    assert(((op1 == NULL) && (get_num_operands(ir_expression_operation(op)) == 1))
 	  || (get_num_operands(ir_expression_operation(op)) == 2));
@@ -221,6 +236,7 @@ ir_expression::ir_expression(int op, const struct glsl_type *type,
 ir_expression::ir_expression(int op, const struct glsl_type *type,
 			     ir_rvalue *op0, ir_rvalue *op1,
 			     ir_rvalue *op2, ir_rvalue *op3)
+: ir_rvalue(higher_precision(higher_precision(op0,op1), higher_precision(op2,op3)))
 {
    this->ir_type = ir_type_expression;
    this->type = type;
@@ -232,6 +248,7 @@ ir_expression::ir_expression(int op, const struct glsl_type *type,
 }
 
 ir_expression::ir_expression(int op, ir_rvalue *op0)
+: ir_rvalue(precision_from_ir(op0))
 {
    this->ir_type = ir_type_expression;
 
@@ -311,6 +328,7 @@ ir_expression::ir_expression(int op, ir_rvalue *op0)
 }
 
 ir_expression::ir_expression(int op, ir_rvalue *op0, ir_rvalue *op1)
+: ir_rvalue(higher_precision(op0,op1))
 {
    this->ir_type = ir_type_expression;
 
@@ -508,12 +526,14 @@ ir_expression::get_operator(const char *str)
 }
 
 ir_constant::ir_constant()
+: ir_rvalue(glsl_precision_undefined)
 {
    this->ir_type = ir_type_constant;
 }
 
 ir_constant::ir_constant(const struct glsl_type *type,
 			 const ir_constant_data *data)
+: ir_rvalue(glsl_precision_undefined)
 {
    assert((type->base_type >= GLSL_TYPE_UINT)
 	  && (type->base_type <= GLSL_TYPE_BOOL));
@@ -524,6 +544,7 @@ ir_constant::ir_constant(const struct glsl_type *type,
 }
 
 ir_constant::ir_constant(float f)
+: ir_rvalue(glsl_precision_undefined)
 {
    this->ir_type = ir_type_constant;
    this->type = glsl_type::float_type;
@@ -534,6 +555,7 @@ ir_constant::ir_constant(float f)
 }
 
 ir_constant::ir_constant(unsigned int u)
+: ir_rvalue(glsl_precision_undefined)
 {
    this->ir_type = ir_type_constant;
    this->type = glsl_type::uint_type;
@@ -544,6 +566,7 @@ ir_constant::ir_constant(unsigned int u)
 }
 
 ir_constant::ir_constant(int i)
+: ir_rvalue(glsl_precision_undefined)
 {
    this->ir_type = ir_type_constant;
    this->type = glsl_type::int_type;
@@ -554,6 +577,7 @@ ir_constant::ir_constant(int i)
 }
 
 ir_constant::ir_constant(bool b)
+: ir_rvalue(glsl_precision_undefined)
 {
    this->ir_type = ir_type_constant;
    this->type = glsl_type::bool_type;
@@ -564,6 +588,7 @@ ir_constant::ir_constant(bool b)
 }
 
 ir_constant::ir_constant(const ir_constant *c, unsigned i)
+: ir_rvalue(c->precision)
 {
    this->ir_type = ir_type_constant;
    this->type = c->type->get_base_type();
@@ -578,6 +603,7 @@ ir_constant::ir_constant(const ir_constant *c, unsigned i)
 }
 
 ir_constant::ir_constant(const struct glsl_type *type, exec_list *value_list)
+: ir_rvalue(glsl_precision_undefined)
 {
    this->ir_type = ir_type_constant;
    this->type = type;
@@ -1025,6 +1051,7 @@ ir_loop::ir_loop()
 
 
 ir_dereference_variable::ir_dereference_variable(ir_variable *var)
+: ir_dereference(precision_from_ir(var))
 {
    this->ir_type = ir_type_dereference_variable;
    this->var = var;
@@ -1034,6 +1061,7 @@ ir_dereference_variable::ir_dereference_variable(ir_variable *var)
 
 ir_dereference_array::ir_dereference_array(ir_rvalue *value,
 					   ir_rvalue *array_index)
+: ir_dereference(precision_from_ir(value))
 {
    this->ir_type = ir_type_dereference_array;
    this->array_index = array_index;
@@ -1043,6 +1071,7 @@ ir_dereference_array::ir_dereference_array(ir_rvalue *value,
 
 ir_dereference_array::ir_dereference_array(ir_variable *var,
 					   ir_rvalue *array_index)
+: ir_dereference(precision_from_ir(var))
 {
    void *ctx = ralloc_parent(var);
 
@@ -1074,17 +1103,21 @@ ir_dereference_array::set_array(ir_rvalue *value)
 
 ir_dereference_record::ir_dereference_record(ir_rvalue *value,
 					     const char *field)
+: ir_dereference(precision_from_ir(value))
 {
    this->ir_type = ir_type_dereference_record;
    this->record = value;
    this->field = ralloc_strdup(this, field);
    this->type = (this->record != NULL)
       ? this->record->type->field_type(field) : glsl_type::error_type;
+   if (this->record)
+      this->precision = this->record->type->field_precision(field);
 }
 
 
 ir_dereference_record::ir_dereference_record(ir_variable *var,
 					     const char *field)
+: ir_dereference(precision_from_ir(var))
 {
    void *ctx = ralloc_parent(var);
 
@@ -1093,6 +1126,8 @@ ir_dereference_record::ir_dereference_record(ir_variable *var,
    this->field = ralloc_strdup(this, field);
    this->type = (this->record != NULL)
       ? this->record->type->field_type(field) : glsl_type::error_type;
+   if (this->record)
+      this->precision = this->record->type->field_precision(field);
 }
 
 bool
@@ -1202,7 +1237,7 @@ ir_swizzle::init_mask(const unsigned *comp, unsigned count)
 
 ir_swizzle::ir_swizzle(ir_rvalue *val, unsigned x, unsigned y, unsigned z,
 		       unsigned w, unsigned count)
-   : val(val)
+   : ir_rvalue(precision_from_ir(val)), val(val)
 {
    const unsigned components[4] = { x, y, z, w };
    this->ir_type = ir_type_swizzle;
@@ -1211,13 +1246,14 @@ ir_swizzle::ir_swizzle(ir_rvalue *val, unsigned x, unsigned y, unsigned z,
 
 ir_swizzle::ir_swizzle(ir_rvalue *val, const unsigned *comp,
 		       unsigned count)
-   : val(val)
+   : ir_rvalue(precision_from_ir(val)), val(val)
 {
    this->ir_type = ir_type_swizzle;
    this->init_mask(comp, count);
 }
 
 ir_swizzle::ir_swizzle(ir_rvalue *val, ir_swizzle_mask mask)
+: ir_rvalue(precision_from_ir(val))
 {
    this->ir_type = ir_type_swizzle;
    this->val = val;
@@ -1315,11 +1351,10 @@ ir_swizzle::variable_referenced() const
    return this->val->variable_referenced();
 }
 
-
 ir_variable::ir_variable(const struct glsl_type *type, const char *name,
-			 ir_variable_mode mode)
+			 ir_variable_mode mode, glsl_precision precision)
    : max_array_access(0), read_only(false), centroid(false), invariant(false),
-     mode(mode), interpolation(ir_var_smooth), array_lvalue(false)
+     mode(mode), interpolation(ir_var_smooth), precision(precision), array_lvalue(false)
 {
    this->ir_type = ir_type_variable;
    this->type = type;
@@ -1351,7 +1386,6 @@ ir_variable::interpolation_string() const
    return "";
 }
 
-
 unsigned
 ir_variable::component_slots() const
 {
@@ -1360,8 +1394,8 @@ ir_variable::component_slots() const
 }
 
 
-ir_function_signature::ir_function_signature(const glsl_type *return_type)
-   : return_type(return_type), is_defined(false), _function(NULL)
+ir_function_signature::ir_function_signature(const glsl_type *return_type, glsl_precision precision)
+   : return_type(return_type), precision(precision), is_defined(false), _function(NULL)
 {
    this->ir_type = ir_type_function_signature;
    this->is_builtin = false;
@@ -1394,6 +1428,7 @@ ir_function_signature::qualifiers_match(exec_list *params)
       ir_variable *a = (ir_variable *)iter_a.get();
       ir_variable *b = (ir_variable *)iter_b.get();
 
+      /* NOTE: precision does not affect qualifier matching */
       if (a->read_only != b->read_only ||
 	  !modes_match(a->mode, b->mode) ||
 	  a->interpolation != b->interpolation ||
@@ -1461,6 +1496,7 @@ ir_call::set_callee(ir_function_signature *sig)
    assert((this->type == NULL) || (this->type == sig->return_type));
 
    this->callee = sig;
+   this->precision = sig->precision;
 }
 
 void
@@ -1508,6 +1544,25 @@ reparent_ir(exec_list *list, void *mem_ctx)
    }
 }
 
+
+glsl_precision
+precision_from_ir (ir_instruction* ir)
+{
+	if (!ir)
+		return glsl_precision_undefined;
+	ir_variable* var = ir->as_variable();
+	if (var)
+		return (glsl_precision)var->precision;
+	ir_rvalue* rv = ir->as_rvalue();
+	if (rv)
+		return rv->get_precision();
+	if (ir->ir_type == ir_type_function_signature)
+	{
+		ir_function_signature* sig = (ir_function_signature*)ir;
+		return sig->precision;
+	}
+	return glsl_precision_high;
+}
 
 static ir_rvalue *
 try_min_one(ir_rvalue *ir)

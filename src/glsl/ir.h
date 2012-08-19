@@ -34,6 +34,7 @@
 #include "list.h"
 #include "ir_visitor.h"
 #include "ir_hierarchical_visitor.h"
+#include "main/macros.h"
 
 /**
  * \defgroup IR Intermediate representation nodes
@@ -80,6 +81,7 @@ enum ir_node_type {
    ir_type_texture,
    ir_type_max /**< maximum ir_type enum number, for validation */
 };
+
 
 /**
  * Base class of all IR instructions
@@ -172,6 +174,9 @@ public:
       return NULL;
    }
 
+   glsl_precision get_precision() const { return precision; }
+   void set_precision (glsl_precision prec) { precision = prec; }
+
    /**
     * Determine if an r-value has the value zero
     *
@@ -209,7 +214,9 @@ public:
    virtual bool is_negative_one() const;
 
 protected:
-   ir_rvalue();
+   ir_rvalue(glsl_precision precision);
+
+   glsl_precision precision;
 };
 
 
@@ -263,9 +270,10 @@ struct ir_state_slot {
    int swizzle;
 };
 
+
 class ir_variable : public ir_instruction {
 public:
-   ir_variable(const struct glsl_type *, const char *, ir_variable_mode);
+   ir_variable(const struct glsl_type *, const char *, ir_variable_mode, glsl_precision);
 
    virtual ir_variable *clone(void *mem_ctx, struct hash_table *ht) const;
 
@@ -344,6 +352,8 @@ public:
     * \sa ir_variable_interpolation
     */
    unsigned interpolation:2;
+
+   unsigned precision:2;
 
    /**
     * Flag that the whole array is assignable
@@ -433,7 +443,7 @@ class ir_function_signature : public ir_instruction {
     * an ir_function.
     */
 public:
-   ir_function_signature(const glsl_type *return_type);
+   ir_function_signature(const glsl_type *return_type, glsl_precision precision);
 
    virtual ir_function_signature *clone(void *mem_ctx,
 					struct hash_table *ht) const;
@@ -485,10 +495,10 @@ public:
 
    /**
     * Function return type.
-    *
-    * \note This discards the optional precision qualifier.
     */
    const struct glsl_type *return_type;
+
+   glsl_precision precision;
 
    /**
     * List of ir_variable of function parameters.
@@ -985,7 +995,7 @@ public:
 class ir_call : public ir_rvalue {
 public:
    ir_call(ir_function_signature *callee, exec_list *actual_parameters)
-      : callee(callee)
+      : ir_rvalue(callee->precision), callee(callee)
    {
       ir_type = ir_type_call;
       assert(callee->return_type != NULL);
@@ -1060,7 +1070,7 @@ public:
 
 private:
    ir_call()
-      : callee(NULL)
+      : ir_rvalue(glsl_precision_undefined), callee(NULL)
    {
       this->ir_type = ir_type_call;
    }
@@ -1237,7 +1247,7 @@ enum ir_texture_opcode {
 class ir_texture : public ir_rvalue {
 public:
    ir_texture(enum ir_texture_opcode op)
-      : op(op), projector(NULL), shadow_comparitor(NULL), offset(NULL)
+      : ir_rvalue(glsl_precision_low), op(op), projector(NULL), shadow_comparitor(NULL), offset(NULL)
    {
       this->ir_type = ir_type_texture;
    }
@@ -1393,6 +1403,9 @@ public:
     * Get the variable that is ultimately referenced by an r-value
     */
    virtual ir_variable *variable_referenced() const = 0;
+
+protected:
+	ir_dereference(glsl_precision precision) : ir_rvalue(precision) { }
 };
 
 
@@ -1692,8 +1705,21 @@ import_prototypes(const exec_list *source, exec_list *dest,
 extern bool
 ir_has_call(ir_instruction *ir);
 
+extern bool
+ir_has_call_skip_builtins(ir_instruction *ir);
+
 extern void
 do_set_program_inouts(exec_list *instructions, struct gl_program *prog);
+
+extern glsl_precision
+precision_from_ir (ir_instruction* ir);
+
+
+extern glsl_precision higher_precision (ir_instruction* a, ir_instruction* b);
+static inline glsl_precision higher_precision (glsl_precision a, glsl_precision b)
+{
+	return MIN2 (a, b);
+}
 
 extern char *
 prototype_string(const glsl_type *return_type, const char *name,

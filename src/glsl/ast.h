@@ -318,10 +318,10 @@ public:
 
 
 enum {
-   ast_precision_none = 0, /**< Absence of precision qualifier. */
-   ast_precision_high,
+   ast_precision_high = 0,
    ast_precision_medium,
-   ast_precision_low
+   ast_precision_low,
+   ast_precision_none, /**< Absence of precision qualifier. */
 };
 
 struct ast_type_qualifier {
